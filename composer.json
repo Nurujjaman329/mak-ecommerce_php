@@ -1,0 +1,17 @@
+{
+    "name": "nurujjaman/mak-ecommerce",
+    "autoload": {
+        "psr-4": {
+            "Nurujjaman\\MakEcommerce\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Nurujjaman329",
+            "email": "mdnurujjaman329@gmail.com"
+        }
+    ],
+    "require": {
+        "vlucas/phpdotenv": "^5.6"
+    }
+}
