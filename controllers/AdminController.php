@@ -94,7 +94,32 @@ function createProduct($data, $files)
     $stmt->execute([$id]);
     $product = $stmt->fetch();
 
+    if($product) {
+        // decode the JSON fields
+        $product['images'] = json_decode($product['images'], true);
+        $product['variants'] = json_decode($product['variants'], true);
+
+        // Convert relative image paths to full URLs
+        $product['images'] = array_map(function($image) {
+            return getFullImageUrl($image);
+        }, $product['images']);
+    }
+
     Response::success($product, 'Product created successfully', 201);
+}
+
+function getFullImageUrl($relativePath) {
+    // Get the base URL from the request
+    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'];
+    $baseUrl = $protocol . '://' . $host;
+
+    // Ensure the relative path starts with a slash
+    if (substr($relativePath, 0, 1) !== '/') {
+        $relativePath = '/' . $relativePath;
+    }
+
+    return $baseUrl . $relativePath;
 }
 
 /**
