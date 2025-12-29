@@ -9,6 +9,24 @@ require_once __DIR__ . '/../config/upload.php';
 // set JWT secret
 JWT::setSecret(getenv('JWT_SECRET'));
 
+/**
+ * Decode items JSON safely
+ */
+function decodeItems($items)
+{
+    if (is_array($items)) {
+        return $items;
+    }
+
+    if (!is_string($items)) {
+        return [];
+    }
+
+    $decoded = json_decode($items, true);
+
+    return is_array($decoded) ? $decoded : [];
+}
+
 function login($data)
 {
     global $pdo;
@@ -33,10 +51,7 @@ function login($data)
         'role' => 'admin',
     ]);
 
-    Response::success(
-        ['token' => $token],
-        'Login successful'
-    );
+    Response::success(['token' => $token], 'Login successful');
 }
 
 function createProduct($data, $files)
@@ -57,13 +72,8 @@ function createProduct($data, $files)
 
     $uploaded = uploadFiles($files['images']);
 
-    $images_json = json_encode(
-        array_map(fn ($f) => "/uploads/$f", $uploaded)
-    );
-
-    $variants_json = json_encode(
-        json_decode($variants, true)
-    );
+    $images_json = json_encode(array_map(fn($f) => "/uploads/$f", $uploaded));
+    $variants_json = json_encode(json_decode($variants, true));
 
     $stmt = $pdo->prepare(
         "INSERT INTO products 
@@ -84,37 +94,68 @@ function createProduct($data, $files)
     $stmt->execute([$id]);
     $product = $stmt->fetch();
 
-    Response::success(
-        $product,
-        'Product created successfully',
-        201
-    );
+    Response::success($product, 'Product created successfully', 201);
 }
 
+/**
+ * ✅ Get all orders with proper shape
+ */
 function getOrders()
 {
     global $pdo;
 
-    $stmt = $pdo->query(
-        "SELECT * FROM orders ORDER BY created_at DESC"
-    );
+    $stmt = $pdo->query("SELECT * FROM orders ORDER BY created_at DESC");
+    $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $orders = $stmt->fetchAll();
+    $formatted = [];
 
-    Response::success($orders);
+    foreach ($orders as $order) {
+        $formatted[] = [
+            "_id" => (string)$order['id'],
+            "customer" => [
+                "name" => $order['customer_name'] ?? '',
+                "phone" => $order['customer_phone'] ?? '',
+                "address" => $order['customer_address'] ?? '',
+            ],
+            "items" => decodeItems($order['items'] ?? null),
+            "totalAmount" => (float)$order['total_amount'],
+            "paymentMethod" => $order['payment_method'] ?? 'COD',
+            "status" => $order['status'] ?? 'pending',
+            "createdAt" => $order['created_at'] ?? '',
+        ];
+    }
+
+    Response::success($formatted);
 }
 
+/**
+ * ✅ Get single order by ID with proper shape
+ */
 function getOrderById($id)
 {
     global $pdo;
 
     $stmt = $pdo->prepare("SELECT * FROM orders WHERE id=?");
     $stmt->execute([$id]);
-    $order = $stmt->fetch();
+    $order = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$order) {
         Response::error('Order not found', 404);
     }
 
-    Response::success($order);
+    $formatted = [
+        "_id" => (string)$order['id'],
+        "customer" => [
+            "name" => $order['customer_name'] ?? '',
+            "phone" => $order['customer_phone'] ?? '',
+            "address" => $order['customer_address'] ?? '',
+        ],
+        "items" => decodeItems($order['items'] ?? null),
+        "totalAmount" => (float)$order['total_amount'],
+        "paymentMethod" => $order['payment_method'] ?? 'COD',
+        "status" => $order['status'] ?? 'pending',
+        "createdAt" => $order['created_at'] ?? '',
+    ];
+
+    Response::success($formatted);
 }
