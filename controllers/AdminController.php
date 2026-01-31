@@ -58,9 +58,10 @@ function createProduct($data, $files)
 {
     global $pdo;
 
-    $name        = $data['name'] ?? '';
-    $description = $data['description'] ?? '';
-    $variants    = $data['variants'] ?? null;
+    $name             = $data['name'] ?? '';
+    $description      = $data['description'] ?? '';
+    $long_description = $data['long_description'] ?? null;
+    $variants         = $data['variants'] ?? null;
 
     if (!$files || empty($files['images']['name'][0])) {
         Response::error('At least one image is required', 400);
@@ -70,43 +71,60 @@ function createProduct($data, $files)
         Response::error('Variants required', 400);
     }
 
+    // Decode variants JSON
+    $variantsArray = json_decode($variants, true);
+
+    if (!is_array($variantsArray) || count($variantsArray) === 0) {
+        Response::error('Variants must be a non-empty array', 400);
+    }
+
+    
+    // Set main product price from first variant
+    $price = $variantsArray[0]['price'] ?? 0;
+
+    // Encode variants for DB
+    $variants_json = json_encode($variantsArray);
+
+    // Upload images
     $uploaded = uploadFiles($files['images']);
-
     $images_json = json_encode(array_map(fn($f) => "/uploads/$f", $uploaded));
-    $variants_json = json_encode(json_decode($variants, true));
 
+    // Insert into DB
     $stmt = $pdo->prepare(
         "INSERT INTO products 
-        (name, description, images, variants, created_at, updated_at)
-        VALUES (?,?,?,?,NOW(),NOW())"
+        (name, description, long_description, price, images, variants, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,NOW(),NOW())"
     );
 
     $stmt->execute([
         $name,
         $description,
+        $long_description,
+        $price,
         $images_json,
-        $variants_json,
+        $variants_json
     ]);
 
+    // Fetch inserted product
     $id = $pdo->lastInsertId();
-
     $stmt = $pdo->prepare("SELECT * FROM products WHERE id=?");
     $stmt->execute([$id]);
     $product = $stmt->fetch();
 
-    if($product) {
-        // decode the JSON fields
-        $product['images'] = json_decode($product['images'], true);
-        $product['variants'] = json_decode($product['variants'], true);
+    if ($product) {
+        // Decode JSON fields
+        $product['images']   = json_decode($product['images'], true) ?? [];
+        $product['variants'] = json_decode($product['variants'], true) ?? [];
+        $product['long_description'] = $product['long_description'] ?? null;
 
-        // Convert relative image paths to full URLs
-        $product['images'] = array_map(function($image) {
-            return getFullImageUrl($image);
-        }, $product['images']);
+        // Convert relative paths to full URLs
+        $product['images'] = array_map(fn($img) => getFullImageUrl($img), $product['images']);
     }
 
     Response::success($product, 'Product created successfully', 201);
 }
+
+
 
 function getFullImageUrl($relativePath) {
     // Get the base URL from the request
