@@ -3,27 +3,29 @@
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../utils/Response.php';
 require_once __DIR__ . '/../config/upload.php';
+require_once __DIR__ . '/helpers.php';
 
-/**
- * Get full URL for uploaded images
- */
-function getFullImageUrl($relativePath) {
-    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'];
-    $baseUrl = $protocol . '://' . $host;
+if (!function_exists('getFullImageUrl')) {
+    function getFullImageUrl($relativePath) {
+        $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'];
+        $baseUrl = $protocol . '://' . $host;
 
-    if (substr($relativePath, 0, 1) !== '/') {
-        $relativePath = '/' . $relativePath;
+        if (substr($relativePath, 0, 1) !== '/') {
+            $relativePath = '/' . $relativePath;
+        }
+
+        return $baseUrl . $relativePath;
     }
-
-    return $baseUrl . $relativePath;
 }
+
 
 /**
  * CREATE PRODUCT
  */
-function createProduct($data, $files) {
-    global $pdo;
+if (!function_exists('createProduct')) {
+    function createProduct($data, $files) {
+        global $pdo;
 
     $name             = $data['name'] ?? '';
     $description      = $data['description'] ?? '';
@@ -89,13 +91,89 @@ function createProduct($data, $files) {
 
     Response::success($product, 'Product created successfully', 201);
 }
+}
+
+
+
+if (!function_exists('updateProduct')) {
+    function updateProduct($id, $data, $files) {
+        global $pdo;
+
+    // Fetch existing product
+    $stmt = $pdo->prepare("SELECT * FROM products WHERE id=?");
+    $stmt->execute([$id]);
+    $product = $stmt->fetch();
+    if (!$product) Response::error('Product not found', 404);
+
+    // Update fields if provided
+    $name = $data['name'] ?? $product['name'];
+    $description = $data['description'] ?? $product['description'];
+    $long_description = $data['long_description'] ?? $product['long_description'];
+    $variants = $data['variants'] ?? $product['variants'];
+    $variantsArray = json_decode($variants, true) ?: [];
+
+    $price = $variantsArray[0]['price'] ?? $product['price'];
+    $variants_json = json_encode($variantsArray);
+
+    // Update images if new files uploaded
+    $images_json = $product['images'];
+    if($files && !empty($files['images']['name'][0])) {
+        $uploaded = uploadFiles($files['images']);
+        $images_json = json_encode(array_map(fn($f) => "/uploads/$f", $uploaded));
+    }
+
+    // Update DB
+    $stmt = $pdo->prepare(
+        "UPDATE products SET 
+            name=?, description=?, long_description=?, price=?, images=?, variants=?, updated_at=NOW()
+         WHERE id=?"
+    );
+    $stmt->execute([$name, $description, $long_description, $price, $images_json, $variants_json, $id]);
+
+    // Return updated product
+    $stmt = $pdo->prepare("SELECT * FROM products WHERE id=?");
+    $stmt->execute([$id]);
+    $updatedProduct = $stmt->fetch();
+
+    $updatedProduct['images'] = json_decode($updatedProduct['images'], true) ?: [];
+    $updatedProduct['variants'] = json_decode($updatedProduct['variants'], true) ?: [];
+    $updatedProduct['long_description'] = $updatedProduct['long_description'] ?? null;
+    $updatedProduct['images'] = array_map(fn($img) => getFullImageUrl($img), $updatedProduct['images']);
+
+    Response::success($updatedProduct, 'Product updated successfully');
+}
+}
+
+
+
+if (!function_exists('deleteProduct')) {
+    function deleteProduct($id) {
+        global $pdo;
+
+    // Check if product exists
+    $stmt = $pdo->prepare("SELECT * FROM products WHERE id=?");
+    $stmt->execute([$id]);
+    $product = $stmt->fetch();
+    if (!$product) Response::error('Product not found', 404);
+
+    // Optionally delete uploaded images here
+
+    // Delete from DB
+    $stmt = $pdo->prepare("DELETE FROM products WHERE id=?");
+    $stmt->execute([$id]);
+
+    Response::success(null, 'Product deleted successfully');
+}
+}
+
 
 
 /**
  * GET ALL PRODUCTS
  */
-function getProducts() {
-    global $pdo;
+if (!function_exists('getProducts')) {
+    function getProducts() {
+        global $pdo;
 
     $stmt = $pdo->query("SELECT * FROM products ORDER BY created_at DESC");
     $products = $stmt->fetchAll();
@@ -110,12 +188,14 @@ function getProducts() {
 
     Response::success($products, 'Success');
 }
+}
 
 /**
  * GET PRODUCT BY ID
  */
-function getProductById($id) {
-    global $pdo;
+if (!function_exists('getProductById')) {
+    function getProductById($id) {
+        global $pdo;
 
     $stmt = $pdo->prepare("SELECT * FROM products WHERE id=?");
     $stmt->execute([$id]);
@@ -130,4 +210,5 @@ function getProductById($id) {
     $product['images'] = array_map(fn($img) => getFullImageUrl($img), $product['images']);
 
     Response::success($product, 'Success');
+}
 }
