@@ -4,7 +4,7 @@ require_once __DIR__ . '/../controllers/AdminController.php';
 require_once __DIR__ . '/../controllers/ProductController.php';
 require_once __DIR__ . '/../middlewares/AdminAuth.php';
 
-$uri = $_SERVER['REQUEST_URI'];
+$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH); // <-- strip query string
 $method = $_SERVER['REQUEST_METHOD'];
 
 if($uri === '/api/v1/admin/login' && $method === 'POST') {
@@ -75,3 +75,32 @@ if(preg_match('#/api/v1/admin/orders/(\d+)#', $uri, $matches)) {
     $admin = AdminAuth();
     getOrderById($matches[1]);
 }
+
+
+// CREATE CATEGORY
+if ($uri === '/api/v1/admin/categories' && $method === 'POST') {
+    $admin = AdminAuth();
+    $data = json_decode(file_get_contents('php://input'), true);
+    createCategory($data);
+}
+
+// GET ALL CATEGORIES
+if ($uri === '/api/v1/admin/categories' && $method === 'GET') {
+    $admin = AdminAuth();
+    getCategories();
+}
+
+// CREATE SUBCATEGORY
+if ($uri === '/api/v1/admin/subcategories' && $method === 'POST') {
+    $admin = AdminAuth();
+    $data = json_decode(file_get_contents('php://input'), true);
+    createSubcategory($data);
+}
+
+// GET ALL SUBCATEGORIES (optional category filter)
+if ($uri === '/api/v1/admin/subcategories' && $method === 'GET') {
+    $admin = AdminAuth();
+    $category_id = $_GET['category_id'] ?? null;
+    getSubcategories($category_id);
+}
+

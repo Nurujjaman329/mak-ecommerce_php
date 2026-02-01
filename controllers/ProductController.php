@@ -43,6 +43,26 @@ if (!function_exists('createProduct')) {
     // Decode variants JSON
     $variantsArray = json_decode($variants, true);
 
+    $category_id    = $data['category_id'] ?? null;
+    $subcategory_id = $data['subcategory_id'] ?? null;
+
+
+    if ($category_id) {
+    $stmt = $pdo->prepare("SELECT id FROM categories WHERE id=?");
+    $stmt->execute([$category_id]);
+    if (!$stmt->fetch()) Response::error("Category not found", 400);
+}
+
+if ($subcategory_id) {
+    $stmt = $pdo->prepare("SELECT id, category_id FROM subcategories WHERE id=?");
+    $stmt->execute([$subcategory_id]);
+    $sub = $stmt->fetch();
+    if (!$sub) Response::error("Subcategory not found", 400);
+    if ($category_id && $sub['category_id'] != $category_id) Response::error("Subcategory does not belong to selected category", 400);
+}
+
+
+
     if (!is_array($variantsArray) || count($variantsArray) === 0) {
         Response::error('Variants must be a non-empty array', 400);
     }
@@ -58,20 +78,24 @@ if (!function_exists('createProduct')) {
     $images_json = json_encode(array_map(fn($f) => "/uploads/$f", $uploaded));
 
     // Insert into DB
-    $stmt = $pdo->prepare(
-        "INSERT INTO products 
-        (name, description, long_description, price, images, variants, created_at, updated_at)
-        VALUES (?,?,?,?,?,?,NOW(),NOW())"
-    );
+$stmt = $pdo->prepare(
+    "INSERT INTO products 
+    (name, description, long_description, price, images, variants, category_id, subcategory_id, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,NOW(),NOW())"
+);
 
-    $stmt->execute([
-        $name,
-        $description,
-        $long_description,
-        $price,
-        $images_json,
-        $variants_json
-    ]);
+
+$stmt->execute([
+    $name,
+    $description,
+    $long_description,
+    $price,
+    $images_json,
+    $variants_json,
+    $category_id,
+    $subcategory_id
+]);
+
 
     // Fetch inserted product
     $id = $pdo->lastInsertId();
@@ -111,9 +135,27 @@ if (!function_exists('updateProduct')) {
     $long_description = $data['long_description'] ?? $product['long_description'];
     $variants = $data['variants'] ?? $product['variants'];
     $variantsArray = json_decode($variants, true) ?: [];
+    $category_id    = $data['category_id'] ?? $product['category_id'];
+$subcategory_id = $data['subcategory_id'] ?? $product['subcategory_id'];
+
 
     $price = $variantsArray[0]['price'] ?? $product['price'];
     $variants_json = json_encode($variantsArray);
+
+    if ($category_id) {
+    $stmt = $pdo->prepare("SELECT id FROM categories WHERE id=?");
+    $stmt->execute([$category_id]);
+    if (!$stmt->fetch()) Response::error("Category not found", 400);
+}
+
+if ($subcategory_id) {
+    $stmt = $pdo->prepare("SELECT id, category_id FROM subcategories WHERE id=?");
+    $stmt->execute([$subcategory_id]);
+    $sub = $stmt->fetch();
+    if (!$sub) Response::error("Subcategory not found", 400);
+    if ($category_id && $sub['category_id'] != $category_id) Response::error("Subcategory does not belong to selected category", 400);
+}
+
 
     // Update images if new files uploaded
     $images_json = $product['images'];
@@ -123,12 +165,12 @@ if (!function_exists('updateProduct')) {
     }
 
     // Update DB
-    $stmt = $pdo->prepare(
-        "UPDATE products SET 
-            name=?, description=?, long_description=?, price=?, images=?, variants=?, updated_at=NOW()
-         WHERE id=?"
-    );
-    $stmt->execute([$name, $description, $long_description, $price, $images_json, $variants_json, $id]);
+$stmt = $pdo->prepare(
+    "UPDATE products SET 
+        name=?, description=?, long_description=?, price=?, images=?, variants=?, category_id=?, subcategory_id=?, updated_at=NOW()
+     WHERE id=?"
+);
+$stmt->execute([$name, $description, $long_description, $price, $images_json, $variants_json, $category_id, $subcategory_id, $id]);
 
     // Return updated product
     $stmt = $pdo->prepare("SELECT * FROM products WHERE id=?");
@@ -175,8 +217,25 @@ if (!function_exists('getProducts')) {
     function getProducts() {
         global $pdo;
 
-    $stmt = $pdo->query("SELECT * FROM products ORDER BY created_at DESC");
-    $products = $stmt->fetchAll();
+   $query  = "SELECT * FROM products WHERE 1=1";
+$params = [];
+
+if(isset($_GET['category_id'])) {
+    $query .= " AND category_id=?";
+    $params[] = $_GET['category_id'];
+}
+
+if(isset($_GET['subcategory_id'])) {
+    $query .= " AND subcategory_id=?";
+    $params[] = $_GET['subcategory_id'];
+}
+
+$query .= " ORDER BY created_at DESC";
+$stmt = $pdo->prepare($query);
+$stmt->execute($params);
+
+$products = $stmt->fetchAll();
+
 
     foreach ($products as &$product) {
         $product['images']   = json_decode($product['images'], true) ?? [];
